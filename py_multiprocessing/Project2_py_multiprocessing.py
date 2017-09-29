@@ -6,21 +6,19 @@ from multiprocessing import Process, Lock, Queue, Value
 import random, time
 import sys
 
-# mailfrom = str(raw_input('Enter your email: ')).lower().strip()
-mailfrom = "divyapracticemail@gmail.com"
-password = "Divya@123"
 
 class EmailSender:
     """ Process to send email """
     def __init__(self):
         self.msg = None
 
-    def mailsend(self, lock, queue,status):
+    def mailsend(self, lock, queue,status, mailfrom, password):
         try:
             server = smtplib.SMTP('smtp.gmail.com', 587)
             server.ehlo()
             server.starttls()
             server.ehlo()
+
             print("connection to gmail server successful")
             # password = str(raw_input('Enter password: ')).strip()
             server.login(mailfrom, password)
@@ -31,8 +29,7 @@ class EmailSender:
                     if queue.qsize()!= 0:
                         msg = queue.get()
                         server.sendmail(msg['From'], msg['To'], msg.as_string())
-                        print ("sent")
-                        print(queue.qsize())
+                        print ("Email sent")
                         lock.release()
                         time.sleep(random.randrange(5, 10))
                     elif queue.qsize() == 0 and int(status.value) == 1:
@@ -52,7 +49,7 @@ class CsvReader:
     def __init__(self):
         self.msg = None
 
-    def csv_dict_reader(self, lock, queue,status):
+    def csv_dict_reader(self, lock, queue,status, mailfrom):
         with open("maildoc.csv") as mail_doc:
            reader = csv.DictReader(mail_doc, delimiter=',')
            for line in reader:
@@ -72,7 +69,24 @@ class CsvReader:
            print "Reading part finished !!"
 
 
+def initialize_username_password():
+    """
+    This function is used to set mailfrom and password from csv file name user_info.csv.
+    Incase there is multiple entries it will take the last one
+    """
+
+    user_info_dict = {}
+    with open("user_info.csv") as user_info:
+        reader = csv.DictReader(user_info, delimiter = ',')
+        for line in reader:
+            user_info_dict['mailfrom'] = line['username']
+            user_info_dict['password'] = line['password']
+
+    return user_info_dict
+
+
 if __name__ == "__main__":
+    user_info_dict = initialize_username_password()
     lock = Lock()
     queue = Queue()
     status = Value('d')
@@ -80,7 +94,8 @@ if __name__ == "__main__":
     process_pool = []
     csvReader = CsvReader()
     emailSender = EmailSender()
-    readerProcess = Process(target=csvReader.csv_dict_reader, args=(lock, queue,status))
-    emailSender = Process(target=emailSender.mailsend, args=(lock, queue,status))
+    readerProcess = Process(target=csvReader.csv_dict_reader, args=(lock, queue,status, user_info_dict['mailfrom']))
+    emailSender = Process(target=emailSender.mailsend, args=(lock, queue,status,
+                                                             user_info_dict['mailfrom'], user_info_dict['password']))
     readerProcess.start()
     emailSender.start()
